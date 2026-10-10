@@ -3,3 +3,5 @@
 *.kubeconfig
 kubeconfig
 .env
+# Recorded verification runs are kept on purpose
+!evidence/**/*.log

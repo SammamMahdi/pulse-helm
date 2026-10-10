@@ -1,0 +1,35 @@
+# 2026-10-10T14:44:05Z v4.3.0+gbec5b06 kubeconform v0.8.0 Version: 0.74.0
+Summary: 5 resources found in 1 file - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
+ok  default: helm lint + template + kubeconform (ConfigMap Deployment Pod Service ServiceAccount )
+Summary: 5 resources found in 1 file - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
+ok  dev: helm lint + template + kubeconform (ConfigMap Deployment Pod Service ServiceAccount )
+Summary: 9 resources found in 1 file - Valid: 9, Invalid: 0, Errors: 0, Skipped: 0
+ok  prod: helm lint + template + kubeconform (ConfigMap Deployment HorizontalPodAutoscaler Ingress NetworkPolicy Pod PodDisruptionBudget Service ServiceAccount )
+Summary: 5 resources found in 1 file - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
+ok  faults: helm lint + template + kubeconform (ConfigMap Deployment Pod Service ServiceAccount )
+--- trivy config on rendered prod manifests (HIGH/CRITICAL)
+
+Report Summary
+
+┌───────────┬────────────┬───────────────────┐
+│  Target   │    Type    │ Misconfigurations │
+├───────────┼────────────┼───────────────────┤
+│ prod.yaml │ kubernetes │         0         │
+└───────────┴────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+ok  trivy: no HIGH/CRITICAL misconfigurations
+--- values that must be rejected
+ok  rejected: no image tag or digest
+ok  rejected: image tag 'latest'
+ok  rejected: malformed digest
+ok  rejected: running as root allowed
+ok  rejected: privilege escalation allowed
+ok  rejected: writable root filesystem
+ok  rejected: fault injection without a Secret ref
+ok  rejected: lowercase config key
+all chart checks passed
+exit=0
+shellcheck: no findings

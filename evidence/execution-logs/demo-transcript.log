@@ -1,0 +1,252 @@
+# 2026-10-10T14:48:24Z kubernetes-helm-lab demo transcript (kind, local)
+
+========== 0. Cluster ==========
+$ kubectl get nodes
+NAME                      STATUS   ROLES           AGE   VERSION
+pulse-lab-control-plane   Ready    control-plane   36s   v1.37.0
+pulse-lab-worker          Ready    <none>          22s   v1.37.0
+pulse-lab-worker2         Ready    <none>          22s   v1.37.0
+
+========== 1. Namespace and Secret (token generated here, never printed, never in git or values) ==========
+namespace/pulse created
+secret/pulse-admin created
+$ kubectl -n pulse get secret pulse-admin
+NAME          TYPE     DATA   AGE
+pulse-admin   Opaque   1      0s
+
+========== 2. Install release with image 1.0.0 ==========
+$ helm upgrade --install pulse charts/pulse -n pulse -f charts/pulse/values-dev.yaml --set faultInjection.enabled=true --set faultInjection.existingSecret=pulse-admin --set image.tag=1.0.0 --wait --timeout 120s
+Release "pulse" does not exist. Installing it now.
+NAME: pulse
+LAST DEPLOYED: Sat Oct 10 20:48:26 2026
+NAMESPACE: pulse
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+NOTES:
+pulse 1.0.0 deployed as release "pulse" in namespace "pulse".
+
+Check rollout:   kubectl rollout status deployment/pulse -n pulse
+Smoke test:      helm test pulse -n pulse
+Reach it (kind): curl http://127.0.0.1:30080/api/v1/info
+Roll back:       helm history pulse -n pulse && helm rollback pulse <REVISION> -n pulse --wait
+$ kubectl -n pulse get deploy,rs,svc,cm,sa
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/pulse   1/1     1            1           4s
+
+NAME                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/pulse-6c9d745684   1         1         1       4s
+
+NAME            TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+service/pulse   NodePort   10.96.100.177   <none>        80:30080/TCP   4s
+
+NAME                         DATA   AGE
+configmap/kube-root-ca.crt   1      5s
+configmap/pulse              3      4s
+
+NAME                     AGE
+serviceaccount/default   5s
+serviceaccount/pulse     4s
+NAME                     READY   STATUS    RESTARTS   AGE   IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-6c9d745684-jm6v7   1/1     Running   0          5s    10.244.2.2   pulse-lab-worker2   <none>           <none>
+$ helm test pulse -n pulse --logs
+NAME: pulse
+LAST DEPLOYED: Sat Oct 10 20:48:26 2026
+NAMESPACE: pulse
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE:     pulse-test-ready
+Last Started:   Sat Oct 10 20:48:31 2026
+Last Completed: Sat Oct 10 20:48:35 2026
+Phase:          Succeeded
+
+POD LOGS: pulse-test-ready (check)
+helm test passed: {'n': 100, 'prime_count': 25, 'largest_prime': 97}
+
+
+========== 3. Verify readiness, endpoints and Secret wiring ==========
+$ kubectl -n pulse get endpointslices -l kubernetes.io/service-name=pulse
+NAME          ADDRESSTYPE   PORTS   ENDPOINTS    AGE
+pulse-8hnrl   IPv4          8000    10.244.2.2   9s
+$ kubectl -n pulse exec pulse-6c9d745684-jm6v7 -- python -c import os; print("ADMIN_TOKEN injected from Secret, length", len(os.environ["ADMIN_TOKEN"]))
+ADMIN_TOKEN injected from Secret, length 48
+admin API without token -> HTTP 401
+admin API with Secret token -> HTTP 200
+  version=1.0.0  pod=pulse-6c9d745684-jm6v7  responses=4
+
+========== 4. Scale to 3 replicas through Helm ==========
+$ helm upgrade pulse charts/pulse -n pulse -f charts/pulse/values-dev.yaml --set faultInjection.enabled=true --set faultInjection.existingSecret=pulse-admin --set image.tag=1.0.0 --set replicaCount=3 --wait --timeout 120s
+Release "pulse" has been upgraded. Happy Helming!
+NAME: pulse
+LAST DEPLOYED: Sat Oct 10 20:48:36 2026
+NAMESPACE: pulse
+STATUS: deployed
+REVISION: 2
+DESCRIPTION: Upgrade complete
+NOTES:
+pulse 1.0.0 deployed as release "pulse" in namespace "pulse".
+
+Check rollout:   kubectl rollout status deployment/pulse -n pulse
+Smoke test:      helm test pulse -n pulse
+Reach it (kind): curl http://127.0.0.1:30080/api/v1/info
+Roll back:       helm history pulse -n pulse && helm rollback pulse <REVISION> -n pulse --wait
+NAME                     READY   STATUS    RESTARTS   AGE   IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-6c9d745684-6gdhn   1/1     Running   0          4s    10.244.2.3   pulse-lab-worker2   <none>           <none>
+pulse-6c9d745684-jm6v7   1/1     Running   0          15s   10.244.2.2   pulse-lab-worker2   <none>           <none>
+pulse-6c9d745684-k52lp   1/1     Running   0          4s    10.244.1.3   pulse-lab-worker    <none>           <none>
+requests are load-balanced across pods:
+  version=1.0.0  pod=pulse-6c9d745684-6gdhn  responses=7
+  version=1.0.0  pod=pulse-6c9d745684-jm6v7  responses=8
+
+========== 5. Rolling update 1.0.0 -> 1.1.0 under continuous traffic ==========
+$ helm upgrade pulse charts/pulse -n pulse -f charts/pulse/values-dev.yaml --set faultInjection.enabled=true --set faultInjection.existingSecret=pulse-admin --set image.tag=1.1.0 --set replicaCount=3 --wait --timeout 180s
+Release "pulse" has been upgraded. Happy Helming!
+NAME: pulse
+LAST DEPLOYED: Sat Oct 10 20:48:41 2026
+NAMESPACE: pulse
+STATUS: deployed
+REVISION: 3
+DESCRIPTION: Upgrade complete
+NOTES:
+pulse 1.1.0 deployed as release "pulse" in namespace "pulse".
+
+Check rollout:   kubectl rollout status deployment/pulse -n pulse
+Smoke test:      helm test pulse -n pulse
+Reach it (kind): curl http://127.0.0.1:30080/api/v1/info
+Roll back:       helm history pulse -n pulse && helm rollback pulse <REVISION> -n pulse --wait
+traffic during the operation: 227 requests, 0 non-200
+last good revision: 3
+$ kubectl -n pulse rollout history deploy/pulse
+deployment.apps/pulse 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+
+  version=1.0.0  pod=pulse-6c9d745684-jm6v7  responses=1
+  version=1.1.0  pod=pulse-854ddd6446-kkhsx  responses=4
+  version=1.1.0  pod=pulse-854ddd6446-xwvq4  responses=1
+  version=1.1.0  pod=pulse-854ddd6446-zsmh5  responses=3
+
+========== 6. Deliberately broken release: image tag that does not exist ==========
+$ helm upgrade pulse charts/pulse -n pulse -f charts/pulse/values-dev.yaml --set faultInjection.enabled=true --set faultInjection.existingSecret=pulse-admin --set image.tag=9.9.9-does-not-exist --set image.pullPolicy=IfNotPresent --set replicaCount=3 --wait --timeout 60s
+level=WARN msg="upgrade failed" name=pulse error="resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: 1/3\ncontext deadline exceeded"
+Error: UPGRADE FAILED: resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: 1/3
+context deadline exceeded
+(exit code 1)
+traffic during the operation: 819 requests, 0 non-200
+
+========== 7. Investigate the failed rollout ==========
+NAME                     READY   STATUS         RESTARTS   AGE   IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-7f5fc7bd59-9hq24   0/1     ErrImagePull   0          59s   10.244.2.5   pulse-lab-worker2   <none>           <none>
+pulse-854ddd6446-kkhsx   1/1     Running        0          69s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running        0          74s   10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running        0          65s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+$ kubectl -n pulse describe pod pulse-7f5fc7bd59-9hq24   (Events section)
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  60s                default-scheduler  Successfully assigned pulse/pulse-7f5fc7bd59-9hq24 to pulse-lab-worker2
+  Normal   Pulling    15s (x3 over 59s)  kubelet            spec.containers{api}: Pulling image "pulse-api:9.9.9-does-not-exist"
+  Warning  Failed     14s (x3 over 57s)  kubelet            spec.containers{api}: Failed to pull image "pulse-api:9.9.9-does-not-exist": failed to pull and unpack image "docker.io/library/pulse-api:9.9.9-does-not-exist": failed to resolve reference "docker.io/library/pulse-api:9.9.9-does-not-exist": pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed
+  Warning  Failed     14s (x3 over 57s)  kubelet            spec.containers{api}: Error: ErrImagePull
+  Normal   BackOff    3s (x3 over 57s)   kubelet            spec.containers{api}: Back-off pulling image "pulse-api:9.9.9-does-not-exist"
+  Warning  Failed     3s (x3 over 57s)   kubelet            spec.containers{api}: Error: ImagePullBackOff
+$ kubectl -n pulse rollout status deploy/pulse --timeout=5s
+Waiting for deployment "pulse" rollout to finish: 1 out of 3 new replicas have been updated...
+error: timed out waiting for the condition
+(exit code 1)
+$ helm history pulse -n pulse
+REVISION	UPDATED                 	STATUS    	CHART      	APP VERSION	DESCRIPTION                                                                                                 
+1       	Sat Oct 10 20:48:26 2026	superseded	pulse-0.1.0	1.0.0      	Install complete                                                                                            
+2       	Sat Oct 10 20:48:36 2026	superseded	pulse-0.1.0	1.0.0      	Upgrade complete                                                                                            
+3       	Sat Oct 10 20:48:41 2026	deployed  	pulse-0.1.0	1.0.0      	Upgrade complete                                                                                            
+4       	Sat Oct 10 20:48:56 2026	failed    	pulse-0.1.0	1.0.0      	Upgrade "pulse" failed: resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: ...
+old pods still serve because maxUnavailable=0:
+  version=1.1.0  pod=pulse-854ddd6446-kkhsx  responses=2
+  version=1.1.0  pod=pulse-854ddd6446-xwvq4  responses=3
+  version=1.1.0  pod=pulse-854ddd6446-zsmh5  responses=1
+
+========== 8. Restore: helm rollback to revision 3 ==========
+$ helm rollback pulse 3 -n pulse --wait --timeout 120s
+Rollback was a success! Happy Helming!
+NAME                     READY   STATUS        RESTARTS   AGE   IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-7f5fc7bd59-9hq24   0/1     Terminating   0          66s   10.244.2.5   pulse-lab-worker2   <none>           <none>
+pulse-854ddd6446-kkhsx   1/1     Running       0          76s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running       0          81s   10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running       0          72s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+  version=1.1.0  pod=pulse-854ddd6446-kkhsx  responses=3
+  version=1.1.0  pod=pulse-854ddd6446-xwvq4  responses=2
+  version=1.1.0  pod=pulse-854ddd6446-zsmh5  responses=1
+
+========== 9. Deliberately broken configuration: MAX_PRIME_LIMIT=oops (container exits at startup) ==========
+$ helm upgrade pulse charts/pulse -n pulse -f charts/pulse/values-dev.yaml --set faultInjection.enabled=true --set faultInjection.existingSecret=pulse-admin --set image.tag=1.1.0 --set replicaCount=3 --set config.MAX_PRIME_LIMIT=oops --wait --timeout 60s
+level=WARN msg="upgrade failed" name=pulse error="resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: 1/3\ncontext deadline exceeded"
+Error: UPGRADE FAILED: resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: 1/3
+context deadline exceeded
+(exit code 1)
+NAME                     READY   STATUS             RESTARTS      AGE     IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-687fb7b54c-9z576   0/1     CrashLoopBackOff   3 (10s ago)   59s     10.244.2.6   pulse-lab-worker2   <none>           <none>
+pulse-854ddd6446-kkhsx   1/1     Running            0             2m16s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running            0             2m21s   10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running            0             2m12s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+$ kubectl -n pulse logs pulse-687fb7b54c-9z576 --previous --tail=2
+    raise ConfigError(f"{key} must be an integer, got {raw!r}") from None
+app.config.ConfigError: MAX_PRIME_LIMIT must be an integer, got 'oops'
+15s         Normal    Created     pod/pulse-687fb7b54c-9z576   Container created
+15s         Normal    Started     pod/pulse-687fb7b54c-9z576   Container started
+13s         Warning   Unhealthy   pod/pulse-687fb7b54c-9z576   Startup probe failed: Get "http://10.244.2.6:8000/health": dial tcp 10.244.2.6:8000: connect: connection refused
+9s          Warning   BackOff     pod/pulse-687fb7b54c-9z576   Back-off restarting failed container api in pod pulse-687fb7b54c-9z576_pulse(649519c5-58e1-4edb-9c01-47c3303ef16a)
+
+========== 10. Roll back again and verify ==========
+$ helm rollback pulse 3 -n pulse --wait --timeout 120s
+Rollback was a success! Happy Helming!
+NAME                     READY   STATUS    RESTARTS      AGE     IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-687fb7b54c-9z576   0/1     Error     3 (11s ago)   60s     10.244.2.6   pulse-lab-worker2   <none>           <none>
+pulse-854ddd6446-kkhsx   1/1     Running   0             2m17s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running   0             2m22s   10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running   0             2m13s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+$ helm test pulse -n pulse --logs
+NAME: pulse
+LAST DEPLOYED: Sat Oct 10 20:51:03 2026
+NAMESPACE: pulse
+STATUS: deployed
+REVISION: 7
+DESCRIPTION: Rollback to 3
+TEST SUITE:     pulse-test-ready
+Last Started:   Sat Oct 10 20:51:04 2026
+Last Completed: Sat Oct 10 20:51:09 2026
+Phase:          Succeeded
+
+POD LOGS: pulse-test-ready (check)
+helm test passed: {'n': 100, 'prime_count': 25, 'largest_prime': 97}
+
+
+========== 11. Readiness failure on one pod: removed from endpoints, NOT restarted ==========
+force pulse-854ddd6446-kkhsx not-ready: HTTP 200
+NAME                     READY   STATUS    RESTARTS   AGE     IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-854ddd6446-kkhsx   0/1     Running   0          2m45s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running   0          2m50s   10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running   0          2m41s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+$ endpoint conditions
+pulse-854ddd6446-xwvq4  ready=true
+pulse-854ddd6446-kkhsx  ready=false
+pulse-854ddd6446-zsmh5  ready=true
+clear fault: HTTP 200
+NAME                     READY   STATUS    RESTARTS   AGE     IP           NODE                NOMINATED NODE   READINESS GATES
+pulse-854ddd6446-kkhsx   1/1     Running   0          2m58s   10.244.1.5   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-xwvq4   1/1     Running   0          3m3s    10.244.1.4   pulse-lab-worker    <none>           <none>
+pulse-854ddd6446-zsmh5   1/1     Running   0          2m54s   10.244.2.4   pulse-lab-worker2   <none>           <none>
+
+========== 12. Final state ==========
+$ helm history pulse -n pulse
+REVISION	UPDATED                 	STATUS    	CHART      	APP VERSION	DESCRIPTION                                                                                                 
+1       	Sat Oct 10 20:48:26 2026	superseded	pulse-0.1.0	1.0.0      	Install complete                                                                                            
+2       	Sat Oct 10 20:48:36 2026	superseded	pulse-0.1.0	1.0.0      	Upgrade complete                                                                                            
+3       	Sat Oct 10 20:48:41 2026	superseded	pulse-0.1.0	1.0.0      	Upgrade complete                                                                                            
+4       	Sat Oct 10 20:48:56 2026	failed    	pulse-0.1.0	1.0.0      	Upgrade "pulse" failed: resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: ...
+5       	Sat Oct 10 20:50:02 2026	superseded	pulse-0.1.0	1.0.0      	Rollback to 3                                                                                               
+6       	Sat Oct 10 20:50:03 2026	failed    	pulse-0.1.0	1.0.0      	Upgrade "pulse" failed: resource Deployment/pulse/pulse not ready. status: InProgress, message: Updated: ...
+7       	Sat Oct 10 20:51:03 2026	deployed  	pulse-0.1.0	1.0.0      	Rollback to 3                                                                                               
+$ kubectl -n pulse get deploy pulse -o jsonpath={.spec.template.spec.containers[0].image}{"\n"}
+pulse-api:1.1.0
