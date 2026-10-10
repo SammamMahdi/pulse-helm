@@ -1,0 +1,10 @@
+pulse {{ include "pulse.version" . }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Check rollout:   kubectl rollout status deployment/{{ include "pulse.fullname" . }} -n {{ .Release.Namespace }}
+Smoke test:      helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+{{- if eq .Values.service.type "NodePort" }}
+Reach it (kind): curl http://127.0.0.1:{{ .Values.service.nodePort }}/api/v1/info
+{{- else }}
+Reach it:        kubectl port-forward svc/{{ include "pulse.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+{{- end }}
+Roll back:       helm history {{ .Release.Name }} -n {{ .Release.Namespace }} && helm rollback {{ .Release.Name }} <REVISION> -n {{ .Release.Namespace }} --wait

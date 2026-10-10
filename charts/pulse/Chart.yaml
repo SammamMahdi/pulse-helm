@@ -1,0 +1,11 @@
+apiVersion: v2
+name: pulse
+description: Helm chart for pulse-api, the FastAPI workload from pulse
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.30.0-0"
+keywords: [fastapi, prometheus, lab]
+maintainers:
+  - name: Sammam Mahdi
+    url: https://github.com/SammamMahdi

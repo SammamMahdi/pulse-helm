@@ -1,0 +1,46 @@
+# Production-oriented settings (e.g. AKS). Deploy by immutable digest, keep capacity during
+# disruptions, autoscale on CPU and restrict who can reach the pods.
+image:
+  repository: ghcr.io/sammammahdi/pulse-api
+  digest: "" # required in practice: --set image.digest=sha256:...  (from the CI run summary)
+  pullPolicy: IfNotPresent
+
+config:
+  APP_ENV: production
+  LOG_LEVEL: INFO
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+networkPolicy:
+  enabled: true
+  extraIngressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+
+ingress:
+  enabled: true
+  className: "" # your cluster's IngressClass (empty = cluster default)
+  host: pulse.example.com
+  tls:
+    - secretName: pulse-tls
+      hosts: [pulse.example.com]

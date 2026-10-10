@@ -1,0 +1,23 @@
+# Local development on kind: one small replica, reachable on 127.0.0.1:30080 via NodePort.
+replicaCount: 1
+
+image:
+  repository: pulse-api
+  tag: "1.0.0"
+  pullPolicy: Never # images are side-loaded with `kind load docker-image`
+
+config:
+  APP_ENV: dev
+  LOG_LEVEL: DEBUG
+
+service:
+  type: NodePort
+  nodePort: 30080
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 48Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
