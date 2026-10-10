@@ -1,0 +1,5 @@
+*.tgz
+*.log
+*.kubeconfig
+kubeconfig
+.env
