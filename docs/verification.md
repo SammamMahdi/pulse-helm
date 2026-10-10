@@ -21,7 +21,7 @@
 | Crash-looping release diagnosis | Executed successfully |
 | Readiness failure handling | Executed successfully |
 | HPA, PDB, NetworkPolicy, Ingress | Statically validated only (kubeconform, Trivy). Not exercised on kind. |
-| CI workflow (static checks + kind install + helm test) | Statically validated (actionlint). Not yet run on GitHub. |
+| CI workflow (static checks + kind install + helm test) | Executed successfully on GitHub-hosted runners ([run 38067586638](https://github.com/SammamMahdi/pulse-helm/actions/runs/38067586638)): both jobs green, including a fresh kind install and `helm test` |
 | AKS deployment | Not performed (documented in docs/aks.md) |
 
 ## Static checks (`scripts/validate-chart.sh`)
